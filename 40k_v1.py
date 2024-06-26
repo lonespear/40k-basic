@@ -23,8 +23,8 @@ BUTTON_HOVER_COLOR = (0, 0, 200)
 TERRAIN_COLOR = (0, 128, 0)  # Green for terrain
 
 # Load unit images
-friendly_image = pygame.image.load(r"C:\Users\jonat\OneDrive\Documents\rl_40k\img\fire_war.png")
-enemy_image = pygame.image.load(r"C:\Users\jonat\OneDrive\Documents\rl_40k\img\berserk.png")
+friendly_image = pygame.image.load(r"C:\Users\jonat\OneDrive\Documents\rl_40k\fire_war.png")
+enemy_image = pygame.image.load(r"C:\Users\jonat\OneDrive\Documents\rl_40k\berserk.png")
 
 UNIT_RADIUS = friendly_image.get_width() // 2
 
