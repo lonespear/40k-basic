@@ -24,8 +24,8 @@ BUTTON_HOVER_COLOR = (0, 0, 200)
 TERRAIN_COLOR = (0, 128, 0)  # Green for terrain
 
 # Load unit images
-friendly_image = pygame.image.load(r"C:\Users\jonat\OneDrive\Documents\rl_40k\img\fire_war.png")
-enemy_image = pygame.image.load(r"C:\Users\jonat\OneDrive\Documents\rl_40k\img\berserk.png")
+friendly_image = pygame.image.load(r"c:\Users\jonathan.day\OneDrive - West Point\Documents\rl_40k\img\fire_war.png")
+enemy_image = pygame.image.load(r"c:\Users\jonathan.day\OneDrive - West Point\Documents\rl_40k\img\berserk.png")
 
 UNIT_RADIUS = friendly_image.get_width() // 2
 
@@ -171,6 +171,24 @@ class Unit:
         for i, line in enumerate(stats):
             text = font.render(line, True, BLACK)
             WIN.blit(text, (popup_x + 10, popup_y + 40 + i * 20))
+    
+    def shoot(self, target):
+        hit_rolls = [random.randint(1, 6) for _ in range(self.sh_atks)]
+        hits = sum(1 for roll in hit_rolls if roll >= self.ballistic_skill)
+        wound_rolls = [random.randint(1, 6) for _ in range(hits)]
+        if self.sh_strength == target.toughness:
+            wounds = sum(1 for roll in wound_rolls if roll >= 4)
+        elif self.sh_strength < target.toughness:
+            wounds = sum(1 for roll in wound_rolls if roll >= 5)
+        else:
+            wounds = sum(1 for roll in wound_rolls if roll >= 3)
+        save_rolls = [random.randint(1,6) for _ in range(wounds)]
+        unsaved_wounds = sum(1 for roll in save_rolls if roll < target.save)
+        damage = unsaved_wounds * self.sh_damage
+        target.wounds_remaining -= damage
+        if target.wounds_remaining <= 0:
+            units.remove(target)
+        
 
 def draw_dashed_circle(surface, color, center, radius, width=1, dash_length=10):
     circumference = 2 * math.pi * radius
@@ -200,12 +218,11 @@ current_phase = GamePhase.COMMAND
 dragged_unit = None
 drag_offset_x = 0
 drag_offset_y = 0
+shoot_popup = None
 
 # UI elements
 BUTTON_WIDTH, BUTTON_HEIGHT = 150, 30
 button_rect = pygame.Rect(WIDTH - BUTTON_WIDTH - 20, 10, BUTTON_WIDTH, BUTTON_HEIGHT)
-
-
 
 # Define terrain pieces as L shapes using lists of rectangles
 terrain = [
@@ -246,7 +263,44 @@ def check_unit_collision(dragged_unit, new_x, new_y):
                 return True
     return False
 
+def draw_shoot_popup(unit):
+    popup_width = 90
+    popup_height = 50
+    popup_x = unit.x + UNIT_RADIUS
+    popup_y = unit.y - UNIT_RADIUS
+
+    if popup_x + popup_width > WIDTH:
+        popup_x = unit.x - UNIT_RADIUS - popup_width
+
+    if popup_y + popup_height > HEIGHT:
+        popup_y = unit.y - UNIT_RADIUS - popup_height
+
+    pygame.draw.rect(WIN, WHITE, (popup_x, popup_y, popup_width, popup_height))
+    pygame.draw.rect(WIN, BLACK, (popup_x, popup_y, popup_width, popup_height), 2)
+
+    shoot_button = pygame.Rect(popup_x + 10, popup_y + 10, popup_width - 20, 30)
+    font = pygame.font.SysFont(None, 24)
+    shoot_text = font.render("Shoot", True, WHITE)
+    
+    if shoot_button.collidepoint(pygame.mouse.get_pos()):
+        pygame.draw.rect(WIN, BUTTON_HOVER_COLOR, shoot_button)
+        if pygame.mouse.get_pressed()[0]:
+            for u in units:
+                if u.selected:
+                    u.shoot(unit)
+                    break
+    else:
+        pygame.draw.rect(WIN, BUTTON_COLOR, shoot_button)
+    
+    WIN.blit(shoot_text, (shoot_button.x + 10, shoot_button.y + 5))
+
 # Helper functions for shooting phase
+def line_intersects_line(l1_start, l1_end, l2_start, l2_end):
+    """Check if two lines intersect."""
+    def ccw(A, B, C):
+        return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+    return ccw(l1_start, l2_start, l2_end) != ccw(l1_end, l2_start, l2_end) and ccw(l1_start, l1_end, l2_start) != ccw(l1_start, l1_end, l2_end)
+
 def line_intersects_rect(line_start, line_end, rect):
     """Check if a line intersects with a rectangle."""
     rect_lines = [
@@ -254,21 +308,14 @@ def line_intersects_rect(line_start, line_end, rect):
         ((rect.right, rect.top), (rect.right, rect.bottom)),
         ((rect.right, rect.bottom), (rect.left, rect.bottom)),
         ((rect.left, rect.bottom), (rect.left, rect.top))
-    ]
-    
-    def line_intersects_line(l1_start, l1_end, l2_start, l2_end):
-        """Check if two lines intersect."""
-        def ccw(A, B, C):
-            return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
-        return ccw(l1_start, l2_start, l2_end) != ccw(l1_end, l2_start, l2_end) and ccw(l1_start, l1_end, l2_start) != ccw(l1_start, l1_end, l2_end)
-    
+    ]   
     for rect_line in rect_lines:
         if line_intersects_line(line_start, line_end, rect_line[0], rect_line[1]):
             return True
     return False
 
 def handle_input():
-    global current_phase, dragged_unit, drag_offset_x, drag_offset_y
+    global current_phase, dragged_unit, drag_offset_x, drag_offset_y, targeted
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -290,13 +337,13 @@ def handle_input():
                 elif current_phase == GamePhase.FIGHT:
                     current_phase = GamePhase.COMMAND
             
-            unit_selected = False
+            unit_selected = False # create marker switch
             for unit in units:
                 # Check if the click is within the circle (unit base)
                 dist = math.sqrt((unit.x - pos[0])**2 + (unit.y - pos[1])**2)
                 if dist <= UNIT_RADIUS:
-                    unit_selected = True
-                    selected_unit = unit
+                    unit_selected = True # flip on marker switch that a unit was selected with the mouse click
+                    selected_unit = unit # associating unit to selected unit
                     if event.button == 1:
                         unit.selected = True
                         if current_phase == GamePhase.MOVEMENT and not unit.has_moved:
@@ -306,13 +353,15 @@ def handle_input():
                             drag_offset_x = unit.x - pos[0]
                             drag_offset_y = unit.y - pos[1]
                         break
+                    elif event.button == 3 and current_phase == GamePhase.SHOOTING:
+                        targeted = unit
                     else:
                         unit.info = True
                 else:
                     unit.selected = False  # Deselect if clicked outside
                     unit.info = False
             
-            if unit_selected:
+            if unit_selected: # deselect logic if clicked another unit
                 for unit in units:
                     if unit != selected_unit:
                         unit.selected = False
@@ -378,10 +427,12 @@ def shooting_phase():
     # reset move indicator
     for unit in units:
         unit.has_moved = False
-    # Draw popup window
+    
     for unit in units:
+        # Draw popup window
         if unit.info:
             unit.draw_popup()
+        # If selected draw range circle, and highlight eligible targets
         if unit.selected:
             center_x = unit.x
             center_y = unit.y
@@ -407,7 +458,8 @@ def shooting_phase():
                         # eligible target
                         pygame.draw.circle(WIN, RED, (target.x, target.y), UNIT_RADIUS + 3, 3)
                         elig_tgts.append(target)
-            #
+            if targeted in elig_tgts:
+                draw_shoot_popup(targeted)
 
 
 def charge_phase():
