@@ -47,7 +47,8 @@ class Unit:
         self.has_moved = False                          # movement tracker
         self.has_shot = False                           # shooting tracker
         self.selected = False                           # bool if selected
-        self.info = False                               # bool to control popup
+        self.targeted = False                           # bool if targeted
+        self.info = False                               # bool to control stats popup
         self.dragging = False                           # bool if dragged
         self.image = image                              # token
         self.movement = movement                        # movement stat
@@ -218,7 +219,6 @@ current_phase = GamePhase.COMMAND
 dragged_unit = None
 drag_offset_x = 0
 drag_offset_y = 0
-shoot_popup = None
 
 # UI elements
 BUTTON_WIDTH, BUTTON_HEIGHT = 150, 30
@@ -315,7 +315,7 @@ def line_intersects_rect(line_start, line_end, rect):
     return False
 
 def handle_input():
-    global current_phase, dragged_unit, drag_offset_x, drag_offset_y, targeted
+    global current_phase, dragged_unit, drag_offset_x, drag_offset_y, target_unit
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -324,7 +324,7 @@ def handle_input():
         if event.type == pygame.MOUSEBUTTONDOWN:
             pos = pygame.mouse.get_pos()
 
-            # Check if the button is clicked
+            # game phase progression button logic
             if button_rect.collidepoint(pos):
                 if current_phase == GamePhase.COMMAND:
                     current_phase = GamePhase.MOVEMENT
@@ -336,15 +336,13 @@ def handle_input():
                     current_phase = GamePhase.FIGHT
                 elif current_phase == GamePhase.FIGHT:
                     current_phase = GamePhase.COMMAND
-            
-            unit_selected = False # create marker switch
+
             for unit in units:
                 # Check if the click is within the circle (unit base)
                 dist = math.sqrt((unit.x - pos[0])**2 + (unit.y - pos[1])**2)
                 if dist <= UNIT_RADIUS:
-                    unit_selected = True # flip on marker switch that a unit was selected with the mouse click
-                    selected_unit = unit # associating unit to selected unit
                     if event.button == 1:
+                        selected_unit = unit
                         unit.selected = True
                         if current_phase == GamePhase.MOVEMENT and not unit.has_moved:
                             dragged_unit = unit
@@ -354,18 +352,13 @@ def handle_input():
                             drag_offset_y = unit.y - pos[1]
                         break
                     elif event.button == 3 and current_phase == GamePhase.SHOOTING:
-                        targeted = unit
+                        if unit in eligible_targets:
+                            unit.targeted = True
                     else:
                         unit.info = True
                 else:
-                    unit.selected = False  # Deselect if clicked outside
                     unit.info = False
-            
-            if unit_selected: # deselect logic if clicked another unit
-                for unit in units:
-                    if unit != selected_unit:
-                        unit.selected = False
-                        unit.info = False
+                    unit.selected = False        
 
         if event.type == pygame.MOUSEBUTTONUP:
             if dragged_unit:
@@ -424,21 +417,28 @@ def movement_phase():
     WIN.blit(moved_text, (WIDTH // 2 - moved_text.get_width() // 2, 10))
 
 def shooting_phase():
+    global eligible_targets
     # reset move indicator
     for unit in units:
         unit.has_moved = False
     
+    eligible_targets = []
+
     for unit in units:
         # Draw popup window
         if unit.info:
             unit.draw_popup()
+        # Draw shoot popup window
+        if unit.targeted:
+            draw_shoot_popup(unit)
+        
         # If selected draw range circle, and highlight eligible targets
         if unit.selected:
             center_x = unit.x
             center_y = unit.y
             radius = unit.eff_range * 20  # 50 is a scaling factor for movement
             draw_dashed_circle(WIN, HIGHLIGHT_COLOR, (center_x, center_y), radius) # Draw range circle
-            elig_tgts = []
+            
             for target in units:
                 dist = math.sqrt((unit.x - target.x)**2 + (unit.y - target.y)**2)   # Calculate distance between unit and all other targets
                 if dist > 0 and dist <= unit.eff_range * 20:                        # Ensure distance is greater than zero(itself) and less than max range
@@ -457,10 +457,8 @@ def shooting_phase():
                     if not left_blocked or not right_blocked:
                         # eligible target
                         pygame.draw.circle(WIN, RED, (target.x, target.y), UNIT_RADIUS + 3, 3)
-                        elig_tgts.append(target)
-            if targeted in elig_tgts:
-                draw_shoot_popup(targeted)
-
+                        eligible_targets.append(target)
+          
 
 def charge_phase():
     # Draw popup window
