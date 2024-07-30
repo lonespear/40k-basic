@@ -548,11 +548,32 @@ def charge_phase():
     for unit in units:
         if unit.info:
             unit.draw_popup()
+
         if unit.selected:
             center_x = unit.x
             center_y = unit.y
             radius = 12 * 20  # 50 is a scaling factor for movement
-            draw_dashed_circle(WIN, RED, (center_x, center_y), radius)
+            draw_dashed_circle(WIN, HIGHLIGHT_COLOR, (center_x, center_y), radius)
+
+            for target in units:
+                dist = math.sqrt((unit.x - target.x) ** 2 + (unit.y - target.y) ** 2)  # Calculate distance between unit and all other targets
+                if dist > 0 and dist <= 12 * 20:  # Ensure distance is greater than zero(itself) and less than max range
+                    angle = math.atan2((target.y - unit.y), (target.x - unit.x))  # Calculate trajectory to target (note the order of arguments)
+
+                    # Calculate left and right offset points from the unit
+                    left_start_x, left_start_y = unit.x + UNIT_RADIUS * math.cos(angle + math.pi / 2), unit.y + UNIT_RADIUS * math.sin(angle + math.pi / 2)
+                    left_end_x, left_end_y = target.x + UNIT_RADIUS * math.cos(angle + math.pi / 2), target.y + UNIT_RADIUS * math.sin(angle + math.pi / 2)
+                    right_start_x, right_start_y = unit.x + UNIT_RADIUS * math.cos(angle - math.pi / 2), unit.y + UNIT_RADIUS * math.sin(angle - math.pi / 2)
+                    right_end_x, right_end_y = target.x + UNIT_RADIUS * math.cos(angle - math.pi / 2), target.y + UNIT_RADIUS * math.sin(angle - math.pi / 2)
+
+                    # Check for terrain intersection
+                    left_blocked = any(line_intersects_rect((left_start_x, left_start_y), (left_end_x, left_end_y), rect) for piece in terrain for rect in piece)
+                    right_blocked = any(line_intersects_rect((right_start_x, right_start_y), (right_end_x, right_end_y), rect) for piece in terrain for rect in piece)
+
+                    if not left_blocked or not right_blocked:
+                        # eligible target
+                        pygame.draw.circle(WIN, RED, (target.x, target.y), UNIT_RADIUS + 3, 3)
+                        unit.elig_tgts.append(target)
 
 
 def fight_phase():
