@@ -180,20 +180,29 @@ class Unit:
 
     def shoot(self, target):
         hit_rolls = [random.randint(1, 6) for _ in range(self.sh_atks)]
+        print("hit rolls: ", hit_rolls)
         hits = sum(1 for roll in hit_rolls if roll >= self.ballistic_skill)
+        print("hits: ", hits)
         wound_rolls = [random.randint(1, 6) for _ in range(hits)]
+        print("wound rolls: ", wound_rolls)
         if self.sh_strength == target.toughness:
             wounds = sum(1 for roll in wound_rolls if roll >= 4)
         elif self.sh_strength < target.toughness:
             wounds = sum(1 for roll in wound_rolls if roll >= 5)
         else:
             wounds = sum(1 for roll in wound_rolls if roll >= 3)
+        print("wounds: ", wounds)
         save_rolls = [random.randint(1,6) for _ in range(wounds)]
+        print("save rolls: ", save_rolls)
         unsaved_wounds = sum(1 for roll in save_rolls if roll < target.save)
+        print("unsaved wounds: ", unsaved_wounds)
         damage = unsaved_wounds * self.sh_damage
+        print("damage: ", damage)
         target.wounds_remaining -= damage
+        print("wounds remaining: ", target.wounds_remaining)
         if target.wounds_remaining <= 0:
             units.remove(target)
+        print("end of shooting")
     
 def draw_shoot_popup(unit):
     global shoot_button
@@ -244,6 +253,7 @@ dragged_unit = None
 drag_offset_x = 0
 drag_offset_y = 0
 shoot_popup = False
+engage = False
 shoot_button = pygame.Rect(0,0,0,0)
 
 # UI elements
@@ -322,31 +332,25 @@ def line_intersects_rect(line_start, line_end, rect):
     return False
 
 def handle_input():
-    global current_phase, dragged_unit, drag_offset_x, drag_offset_y, selected_unit, targeted_unit
+    global current_phase, dragged_unit, drag_offset_x, drag_offset_y, selected_unit, targeted_unit, engage
 
     event = None
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            return False, None
+            return False
 
         if event.type == pygame.MOUSEBUTTONDOWN:
-            print("mouse down")
-            print(shoot_button.collidepoint(pos))
             pos = pygame.mouse.get_pos()
-
             # Handle the game phase progression button logic
             if button_rect.collidepoint(pos):
                 current_phase = GamePhase((current_phase.value % 5) + 1)  # Cycle through phases
-                return True, event
+                return True
             
-            # Handle shooting popup window logic if pressed
+            # Handle shooting popup window logic is pressed
             if shoot_popup:
                 if shoot_button.collidepoint(pos):
-                    print('SHOT OUT')
-                    for u in units:
-                        if u.selected:
-                            u.shoot(unit)
-                            return True, event
+                    engage = True
+                    return True
 
             clicked_unit = None
             for unit in units:
@@ -385,7 +389,6 @@ def handle_input():
                         clicked_unit.info = not clicked_unit.info
             else:
                 # Click was not on any unit, reset all selections and info
-                print("fooey")
                 for unit in units:
                     unit.selected = False
                     unit.info = False
@@ -449,7 +452,7 @@ def movement_phase():
     WIN.blit(moved_text, (WIDTH // 2 - moved_text.get_width() // 2, 10))
 
 def shooting_phase():
-    global eligible_targets, shoot_popup
+    global eligible_targets, shoot_popup, engage
     # reset move indicator
     for unit in units:
         unit.has_moved = False
@@ -489,10 +492,29 @@ def shooting_phase():
         # Draw shoot popup window if unit is targeted
         if unit.targeted:
             draw_shoot_popup(unit)
-            shoot_popup = True
-        else:
-            shoot_popup = False
-         
+
+    # check if a shoot popup is up
+    if sum(1 for u in units if u.targeted) == 1:
+        shoot_popup = True
+    else:
+        shoot_popup = False
+
+    # if shoot popup is clicked conduct engagement
+    if engage == True:
+        shoot_popup = False
+        for u in units:
+            if u.selected == True:
+                shooter = u
+            elif u.targeted == True:
+                engaged = u
+
+        shooter.shoot(engaged) #
+        shooter.selected = False
+        shooter.has_shot = True
+        engaged.targeted = False
+        engage = False
+
+    
 
 def charge_phase():
     # Draw popup window
@@ -517,7 +539,7 @@ def main():
     run = True
     while run:
         clock.tick(60)
-        run, event = handle_input()
+        run = handle_input()
 
         WIN.fill(GRAY)  # Fill the screen with gray
         draw_terrain()
