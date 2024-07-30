@@ -8,11 +8,12 @@ from enum import Enum, auto
 pygame.init()
 
 # Set up display
-WIDTH, HEIGHT = 1000, 700
+WIDTH, HEIGHT = 1000, 750
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Warhammer 40K Basic")
 
 # Define colors
+DARK_GRAY = (192,192,192)
 GRAY = (128, 128, 128)
 WHITE = (255, 255, 255)
 HIGHLIGHT_COLOR = (255, 255, 0)  # Yellow highlight
@@ -24,8 +25,8 @@ BUTTON_HOVER_COLOR = (0, 0, 200)
 TERRAIN_COLOR = (0, 128, 0)  # Green for terrain
 
 # Load unit images
-friendly_image = pygame.image.load(r"OneDrive\Documents\rl_40k\img\fire_war.png")
-enemy_image = pygame.image.load(r"OneDrive\Documents\rl_40k\img\berserk.png")
+friendly_image = pygame.image.load(r"C:\Users\jonathan.day\OneDrive - West Point\Documents\rl_40k\img\fire_war.png")
+enemy_image = pygame.image.load(r"C:\Users\jonathan.day\OneDrive - West Point\Documents\rl_40k\img\berserk.png")
 
 UNIT_RADIUS = friendly_image.get_width() // 2
 
@@ -181,20 +182,20 @@ class Unit:
     def shoot(self, target):
         hit_rolls = [random.randint(1, 6) for _ in range(self.sh_atks)]
         print("hit rolls: ", hit_rolls)
-        hits = sum(1 for roll in hit_rolls if roll >= self.ballistic_skill)
+        hits = sum(1 for roll in hit_rolls if roll >= self.ballistic_skill - 1)
         print("hits: ", hits)
         wound_rolls = [random.randint(1, 6) for _ in range(hits)]
         print("wound rolls: ", wound_rolls)
         if self.sh_strength == target.toughness:
-            wounds = sum(1 for roll in wound_rolls if roll >= 4)
-        elif self.sh_strength < target.toughness:
-            wounds = sum(1 for roll in wound_rolls if roll >= 5)
-        else:
             wounds = sum(1 for roll in wound_rolls if roll >= 3)
+        elif self.sh_strength < target.toughness:
+            wounds = sum(1 for roll in wound_rolls if roll >= 4)
+        else:
+            wounds = sum(1 for roll in wound_rolls if roll >= 2)
         print("wounds: ", wounds)
         save_rolls = [random.randint(1,6) for _ in range(wounds)]
         print("save rolls: ", save_rolls)
-        unsaved_wounds = sum(1 for roll in save_rolls if roll < target.save)
+        unsaved_wounds = sum(1 for roll in save_rolls if roll < target.save + 1)
         print("unsaved wounds: ", unsaved_wounds)
         damage = unsaved_wounds * self.sh_damage
         print("damage: ", damage)
@@ -203,6 +204,8 @@ class Unit:
         if target.wounds_remaining <= 0:
             units.remove(target)
         print("end of shooting")
+        return(WIN, hit_rolls, hits, wound_rolls, wounds, save_rolls, unsaved_wounds, damage)
+
     
 def draw_shoot_popup(unit):
     global shoot_button
@@ -234,13 +237,13 @@ def draw_shoot_popup(unit):
         
 # Create units
 friendly_units = [
-    Unit(x * 50 + 50, y * 50 + 50, friendly_image, 6, 4, 3, 4, 5, 5, 3, 
+    Unit(x * 50 + 50, y * 50 + 80, friendly_image, 6, 4, 3, 4, 5, 5, 3, 
          "Pulse Carbine", 20, 2, 5, 0, 1,
          "Honor Blade", 1, 4, 0, 1)
     for x,y in zip([0,1,2,1,0], [4,5,6,7,8])
 ]
 enemy_units = [
-    Unit(x * 50 + 50, y * 50 + 50, enemy_image, 5, 5, 4, 3, 6, 6, 2, 
+    Unit(x * 50 + 50, y * 50 + 80, enemy_image, 5, 5, 4, 3, 6, 6, 2, 
          "Bolt Pistol", 8, 2, 4, 0, 2,
          "Chain-Axe", 3, 6, -1, 2)
     for x,y in zip([18,17,16,17,18], [4,5,6,7,8])
@@ -254,18 +257,20 @@ drag_offset_x = 0
 drag_offset_y = 0
 shoot_popup = False
 engage = False
+followup = False
 shoot_button = pygame.Rect(0,0,0,0)
 
 # UI elements
 BUTTON_WIDTH, BUTTON_HEIGHT = 150, 30
-button_rect = pygame.Rect(WIDTH - BUTTON_WIDTH - 10, 10, BUTTON_WIDTH, BUTTON_HEIGHT)
+button_rect = pygame.Rect(WIDTH - BUTTON_WIDTH - 5, 5, BUTTON_WIDTH, BUTTON_HEIGHT)
+ui_rect = pygame.Rect(0, 0, WIDTH, 40)
 
 # Define terrain pieces as L shapes using lists of rectangles
 terrain = [
-    [pygame.Rect(400, 80, 20, 200), pygame.Rect(200, 260, 200, 20)],  # Top-left L
-    [pygame.Rect(600, 80, 20, 200), pygame.Rect(600, 260, 200, 20)],  # Top-right L
-    [pygame.Rect(400, 400, 20, 200), pygame.Rect(200, 400, 200, 20)],  # Bottom-left L
-    [pygame.Rect(600, 400, 20, 200), pygame.Rect(600, 400, 200, 20)]   # Bottom-right L
+    [pygame.Rect(400, 105, 20, 225), pygame.Rect(200, 310, 200, 20)],  # Top-left L
+    [pygame.Rect(600, 105, 20, 225), pygame.Rect(600, 310, 200, 20)],  # Top-right L
+    [pygame.Rect(400, 425, 20, 225), pygame.Rect(200, 425, 200, 20)],  # Bottom-left L
+    [pygame.Rect(600, 425, 20, 225), pygame.Rect(600, 425, 200, 20)]   # Bottom-right L
 ]
 
 '''
@@ -275,6 +280,10 @@ GAME FUNCTIONS
 def draw_units():
     for unit in units:
         unit.draw()
+        if unit.wounds_remaining != unit.wounds:
+            text = pygame.font.SysFont(None, 18)
+            wounds_text = text.render(f"{unit.wounds_remaining}/{unit.wounds}", True, BLACK)
+            WIN.blit(wounds_text, (unit.x - wounds_text.get_width() // 2, unit.y + UNIT_RADIUS+2))
 
 def draw_terrain():
     for piece in terrain:
@@ -282,9 +291,12 @@ def draw_terrain():
             pygame.draw.rect(WIN, TERRAIN_COLOR, rect)
 
 def draw_uibar():
+    # Draw Display bar
+    pygame.draw.rect(WIN, DARK_GRAY, ui_rect)
+
     # Display current phase
     font = pygame.font.SysFont(None, 36)
-    phase_text = font.render(current_phase.name, True, WHITE)
+    phase_text = font.render(current_phase.name, True, BLACK)
     WIN.blit(phase_text, (10, 10))
 
     # Draw UI button
@@ -294,6 +306,11 @@ def draw_uibar():
         pygame.draw.rect(WIN, BUTTON_COLOR, button_rect)
     button_text = font.render("Next Phase", True, WHITE)
     WIN.blit(button_text, (button_rect.x + 10, button_rect.y + 5))
+
+def display_roll(WIN, hit_rolls, hits, wound_rolls, wounds, save_rolls, unsaved, damage):
+    font = pygame.font.SysFont(None, 18)
+    roll_text = font.render(f"Hit Rolls: {hit_rolls}, Hits: {hits}, Wound Rolls: {wound_rolls}, Wounds: {wounds}, Save Rolls: {save_rolls}, Unsaved: {unsaved}, Damage: {damage}", True, BLACK)
+    WIN.blit(roll_text, (200, 15))
 
 def draw_dashed_circle(surface, color, center, radius, width=1, dash_length=10):
     circumference = 2 * math.pi * radius
@@ -332,7 +349,7 @@ def line_intersects_rect(line_start, line_end, rect):
     return False
 
 def handle_input():
-    global current_phase, dragged_unit, drag_offset_x, drag_offset_y, selected_unit, targeted_unit, engage
+    global current_phase, dragged_unit, drag_offset_x, drag_offset_y, engage, followup
 
     event = None
     for event in pygame.event.get():
@@ -341,6 +358,11 @@ def handle_input():
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             pos = pygame.mouse.get_pos()
+            
+            # Handle click-through of roll results display
+            if followup == True:
+                followup = False
+
             # Handle the game phase progression button logic
             if button_rect.collidepoint(pos):
                 current_phase = GamePhase((current_phase.value % 5) + 1)  # Cycle through phases
@@ -367,22 +389,21 @@ def handle_input():
                         unit.info = False
                         unit.targeted = False
 
-                    # Select the clicked unit
+                    # Select the clicked unit if unit has not 
                     clicked_unit.selected = True
-                    selected_unit = clicked_unit
                     if current_phase == GamePhase.MOVEMENT and not clicked_unit.has_moved:
                         dragged_unit = clicked_unit
                         dragged_unit.start_x = clicked_unit.x
                         dragged_unit.start_y = clicked_unit.y
                         drag_offset_x = clicked_unit.x - pos[0]
                         drag_offset_y = clicked_unit.y - pos[1]
+                    elif current_phase == GamePhase.SHOOTING and clicked_unit.has_shot:
+                        clicked_unit.selected = False
                 elif event.button == 3:  # Right-click for info or targeting
-                    if current_phase == GamePhase.SHOOTING:
+                    sel_unit = next((u for u in units if u.selected), None)
+                    if current_phase == GamePhase.SHOOTING and sel_unit and clicked_unit in sel_unit.elig_tgts:
                         # Target this unit if it's within the eligible targets of the selected unit
-                        sel_unit = next((u for u in units if u.selected), None)
-                        if sel_unit and clicked_unit in sel_unit.elig_tgts:
-                            clicked_unit.targeted = not clicked_unit.targeted
-                            targeted_unit = clicked_unit
+                        clicked_unit.targeted = not clicked_unit.targeted
                     else:
                         for unit in units:
                             unit.info = False
@@ -427,6 +448,11 @@ def handle_input():
 
 
 def command_phase():
+    # reset move indicator
+    for unit in units:
+        unit.has_moved = False
+        unit.has_shot = False
+    
     # Draw popup window
     for unit in units:
         if unit.info:
@@ -452,10 +478,7 @@ def movement_phase():
     WIN.blit(moved_text, (WIDTH // 2 - moved_text.get_width() // 2, 10))
 
 def shooting_phase():
-    global eligible_targets, shoot_popup, engage
-    # reset move indicator
-    for unit in units:
-        unit.has_moved = False
+    global eligible_targets, shoot_popup, engage, followup, results
 
     for unit in units:
         # Draw popup window
@@ -508,12 +531,16 @@ def shooting_phase():
             elif u.targeted == True:
                 engaged = u
 
-        shooter.shoot(engaged) #
+        results = shooter.shoot(engaged) #
         shooter.selected = False
         shooter.has_shot = True
         engaged.targeted = False
         engage = False
+        followup = True
 
+    # Display shooting roll results in UI Bar
+    if followup == True:
+        display_roll(results[0], results[1], results[2], results[3], results[4], results[5], results[6], results[7])
     
 
 def charge_phase():
