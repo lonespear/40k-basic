@@ -25,8 +25,8 @@ BUTTON_HOVER_COLOR = (0, 0, 200)
 TERRAIN_COLOR = (0, 128, 0)  # Green for terrain
 
 # Load unit images
-friendly_image = pygame.image.load(r"C:\Users\jonathan.day\OneDrive - West Point\Documents\rl_40k\img\fire_war.png")
-enemy_image = pygame.image.load(r"C:\Users\jonathan.day\OneDrive - West Point\Documents\rl_40k\img\berserk.png")
+friendly_image = pygame.image.load(r"C:\Users\jonat\OneDrive\Documents\rl_40k\img\fire_war.png")
+enemy_image = pygame.image.load(r"C:\Users\jonat\OneDrive\Documents\rl_40k\img\berserk.png")
 
 UNIT_RADIUS = friendly_image.get_width() // 2
 
@@ -51,6 +51,7 @@ class Unit:
         self.start_y = y                                # starting y pos for dragging purposes
         self.has_moved = False                          # movement tracker
         self.has_shot = False                           # shooting tracker
+        self.has_charged = False                        # charge tracker
         self.selected = False                           # bool if selected
         self.targeted = False                           # bool if targeted
         self.info = False                               # bool to control stats popup
@@ -109,7 +110,7 @@ class Unit:
 
         # Draw popup buttons
         base_button = pygame.Rect(popup_x + 10, popup_y + 10, popup_width / 3.1, 20)
-        shoot_button = pygame.Rect(popup_x + 60, popup_y + 10, popup_width / 3.1, 20)
+        target_button = pygame.Rect(popup_x + 60, popup_y + 10, popup_width / 3.1, 20)
         fight_button = pygame.Rect(popup_x + 110, popup_y + 10, popup_width / 3.1, 20)
         
         # Define the font
@@ -124,13 +125,13 @@ class Unit:
         base_text = font.render("Basic", True, WHITE)
         WIN.blit(base_text, (base_button.x + 10, base_button.y + 5))
         # Draw shooting stats button
-        if shoot_button.collidepoint(pygame.mouse.get_pos()):
+        if target_button.collidepoint(pygame.mouse.get_pos()):
             pane = 2
-            pygame.draw.rect(WIN, BUTTON_HOVER_COLOR, shoot_button)
+            pygame.draw.rect(WIN, BUTTON_HOVER_COLOR, target_button)
         else:
-            pygame.draw.rect(WIN, BUTTON_COLOR, shoot_button)
+            pygame.draw.rect(WIN, BUTTON_COLOR, target_button)
         shoot_text = font.render("Shoot", True, WHITE)
-        WIN.blit(shoot_text, (shoot_button.x + 10, shoot_button.y + 5))
+        WIN.blit(shoot_text, (target_button.x + 10, target_button.y + 5))
         # Draw fighting stats button
         if fight_button.collidepoint(pygame.mouse.get_pos()):
             pane = 3
@@ -205,13 +206,29 @@ class Unit:
             units.remove(target)
         print("end of shooting")
         return(WIN, hit_rolls, hits, wound_rolls, wounds, save_rolls, unsaved_wounds, damage)
-
     
-def draw_shoot_popup(unit):
-    global shoot_button
+    def charge(self, target):
+        # Calculate the distance between bases of the two units
+        d = round(math.sqrt((self.x - target.x - 2 * UNIT_RADIUS)**2 + (self.y - target.y - 2 * UNIT_RADIUS)**2) / 20, 2)
+        roll = [random.randint(1,6), random.randint(1,6)]
+        if sum(roll) < d:
+            print("charge failed")
+            return(WIN, False, "Charge Failed", roll, d)
+        else:
+            print("charge passed")
+            return(WIN, True, "Charge Succeeded", roll, d)
+        
 
-    popup_width = 90
-    popup_height = 50
+def display_charge(WIN, text, roll, distance):
+    font = pygame.font.SysFont(None, 18)
+    roll_text = font.render(f"{text}, Roll: {roll}, Distance: {distance}", True, BLACK)
+    WIN.blit(roll_text, (200, 15))
+    
+def draw_target_popup(unit):
+    global target_button
+
+    popup_width = 65
+    popup_height = 30
     popup_x = unit.x + UNIT_RADIUS
     popup_y = unit.y - UNIT_RADIUS
 
@@ -221,30 +238,35 @@ def draw_shoot_popup(unit):
     if popup_y + popup_height > HEIGHT:
         popup_y = unit.y - UNIT_RADIUS - popup_height
 
-    shoot_button = pygame.Rect(popup_x + 10, popup_y + 10, popup_width - 20, 30)
+    target_button = pygame.Rect(popup_x + 5, popup_y + 5, popup_width - 10, 20)
 
     pygame.draw.rect(WIN, WHITE, (popup_x, popup_y, popup_width, popup_height))
     pygame.draw.rect(WIN, BLACK, (popup_x, popup_y, popup_width, popup_height), 2)
 
-    if shoot_button.collidepoint(pygame.mouse.get_pos()):
-        pygame.draw.rect(WIN, HIGHLIGHT_COLOR, shoot_button)
+    if target_button.collidepoint(pygame.mouse.get_pos()):
+        pygame.draw.rect(WIN, RED, target_button)
     else:
-        pygame.draw.rect(WIN, BUTTON_COLOR, shoot_button)
+        pygame.draw.rect(WIN, BUTTON_COLOR, target_button)
 
-    font = pygame.font.SysFont(None, 24)
-    shoot_text = font.render("Shoot", True, WHITE)
-    WIN.blit(shoot_text, (shoot_button.x + 10, shoot_button.y + 5))
-        
+    font = pygame.font.SysFont(None, 18)
+    if current_phase == GamePhase.SHOOTING:
+        target_text = font.render("Shoot", True, WHITE)
+    elif current_phase == GamePhase.CHARGE:
+        target_text = font.render("Charge", True, WHITE)
+    else:
+        target_text = font.render("Fight", True, WHITE)
+    WIN.blit(target_text, (target_button.x + 5, target_button.y + 5))
+
 # Create units
 friendly_units = [
-    Unit(x * 50 + 50, y * 50 + 80, friendly_image, 6, 4, 3, 4, 5, 5, 3, 
-         "Pulse Carbine", 20, 2, 5, 0, 1,
+    Unit(x * 50 + 50, y * 50 + 80, friendly_image, 6, 4, 3, 4, 2, 2, 5, 
+         "Pulse Carbine", 20, 2, 5, 0, 2,
          "Honor Blade", 1, 4, 0, 1)
     for x,y in zip([0,1,2,1,0], [4,5,6,7,8])
 ]
 enemy_units = [
-    Unit(x * 50 + 50, y * 50 + 80, enemy_image, 5, 5, 4, 3, 6, 6, 2, 
-         "Bolt Pistol", 8, 2, 4, 0, 2,
+    Unit(x * 50 + 50, y * 50 + 80, enemy_image, 5, 5, 4, 3, 3, 3, 4, 
+         "Bolt Pistol", 8, 2, 4, 0, 1,
          "Chain-Axe", 3, 6, -1, 2)
     for x,y in zip([18,17,16,17,18], [4,5,6,7,8])
 ]
@@ -255,10 +277,10 @@ current_phase = GamePhase.COMMAND
 dragged_unit = None
 drag_offset_x = 0
 drag_offset_y = 0
-shoot_popup = False
+target_popup = False
 engage = False
 followup = False
-shoot_button = pygame.Rect(0,0,0,0)
+target_button = pygame.Rect(0,0,0,0)
 
 # UI elements
 BUTTON_WIDTH, BUTTON_HEIGHT = 150, 30
@@ -366,11 +388,15 @@ def handle_input():
             # Handle the game phase progression button logic
             if button_rect.collidepoint(pos):
                 current_phase = GamePhase((current_phase.value % 5) + 1)  # Cycle through phases
+                for unit in units:
+                    unit.selected = False
+                    unit.targeted = False
+                    unit.info = False
                 return True
             
             # Handle shooting popup window logic is pressed
-            if shoot_popup:
-                if shoot_button.collidepoint(pos):
+            if target_popup:
+                if target_button.collidepoint(pos):
                     engage = True
                     return True
 
@@ -403,6 +429,13 @@ def handle_input():
                     sel_unit = next((u for u in units if u.selected), None)
                     if current_phase == GamePhase.SHOOTING and sel_unit and clicked_unit in sel_unit.elig_tgts:
                         # Target this unit if it's within the eligible targets of the selected unit
+                        for unit in units:
+                            unit.targeted = False
+                        clicked_unit.targeted = not clicked_unit.targeted
+                    elif current_phase == GamePhase.CHARGE and sel_unit and clicked_unit in sel_unit.elig_tgts:
+                        # Target this unit if it's within the eligible targets of the selected unit
+                        for unit in units:
+                            unit.targeted = False
                         clicked_unit.targeted = not clicked_unit.targeted
                     else:
                         for unit in units:
@@ -478,9 +511,10 @@ def movement_phase():
     WIN.blit(moved_text, (WIDTH // 2 - moved_text.get_width() // 2, 10))
 
 def shooting_phase():
-    global eligible_targets, shoot_popup, engage, followup, results
+    global eligible_targets, target_popup, engage, followup, results
 
     for unit in units:
+        eligible_targets = []
         # Draw popup window
         if unit.info:
             unit.draw_popup()
@@ -510,21 +544,22 @@ def shooting_phase():
                     if not left_blocked or not right_blocked:
                         # eligible target
                         pygame.draw.circle(WIN, RED, (target.x, target.y), UNIT_RADIUS + 3, 3)
-                        unit.elig_tgts.append(target)
+                        eligible_targets.append(target)
+                        unit.elig_tgts = eligible_targets
 
         # Draw shoot popup window if unit is targeted
         if unit.targeted:
-            draw_shoot_popup(unit)
+            draw_target_popup(unit)
 
     # check if a shoot popup is up
     if sum(1 for u in units if u.targeted) == 1:
-        shoot_popup = True
+        target_popup = True
     else:
-        shoot_popup = False
+        target_popup = False
 
     # if shoot popup is clicked conduct engagement
     if engage == True:
-        shoot_popup = False
+        target_popup = False
         for u in units:
             if u.selected == True:
                 shooter = u
@@ -544,6 +579,8 @@ def shooting_phase():
     
 
 def charge_phase():
+    global eligible_targets, target_popup, engage, followup, results
+    
     # Draw popup window
     for unit in units:
         if unit.info:
@@ -573,8 +610,37 @@ def charge_phase():
                     if not left_blocked or not right_blocked:
                         # eligible target
                         pygame.draw.circle(WIN, RED, (target.x, target.y), UNIT_RADIUS + 3, 3)
-                        unit.elig_tgts.append(target)
+                        eligible_targets.append(target)
+                        unit.elig_tgts = eligible_targets
+        # Draw shoot popup window if unit is targeted
+        if unit.targeted:
+            draw_target_popup(unit)
 
+    # check if a shoot popup is up
+    if sum(1 for u in units if u.targeted) == 1:
+        target_popup = True
+    else:
+        target_popup = False
+
+    # if shoot popup is clicked conduct engagement
+    if engage == True:
+        target_popup = False
+        for u in units:
+            if u.selected == True:
+                charger = u
+            elif u.targeted == True:
+                charged = u
+
+        results = charger.charge(charged) #
+        charger.selected = False
+        charger.has_shot = True
+        charged.targeted = False
+        engage = False
+        followup = True
+
+    # Display shooting roll results in UI Bar
+    if followup == True:
+        display_charge(results[0], results[2], results[3], results[4])
 
 def fight_phase():
     # Draw popup window
